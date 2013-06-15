@@ -477,8 +477,10 @@ bool CTransaction::CheckTransaction() const
         if (txout.IsEmpty() && !IsCoinBase() && !IsCoinStake())
             return DoS(100, error("CTransaction::CheckTransaction() : txout empty for user transaction"));
 
-        // ppcoin: enforce minimum output amount
-        if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
+        // NovaCoin: enforce minimum output amount for user transactions
+        // (and for all transactions until 20 Sep 2013)
+        if ((!IsCoinBase() || nTime < CHAINCHECKS_SWITCH_TIME)
+                && (!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
             return DoS(100, error("CTransaction::CheckTransaction() : txout.nValue below minimum"));
 
         if (txout.nValue > MAX_MONEY)
@@ -500,7 +502,7 @@ bool CTransaction::CheckTransaction() const
     if (IsCoinBase())
     {
         if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
-            return DoS(100, error("CTransaction::CheckTransaction() : coinbase script size"));
+            return DoS(100, error("CTransaction::CheckTransaction() : coinbase script size is invalid"));
     }
     else
     {
@@ -2135,10 +2137,10 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot) const
     else
     {
         // Check coinbase reward
-        if (vtx[0].GetValueOut() > (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE))
+        if (vtx[0].GetValueOut() > (GetProofOfWorkReward(nBits) - nFee))
             return DoS(50, error("CheckBlock() : coinbase reward exceeded %s > %s", 
                    FormatMoney(vtx[0].GetValueOut()).c_str(),
-                   FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits) : 0).c_str()));
+                   FormatMoney(GetProofOfWorkReward(nBits) - nFee).c_str()));
     }
 #else
 
