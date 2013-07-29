@@ -39,7 +39,7 @@ static CBigNum bnProofOfStakeLimit(~uint256(0) >> 20);
 
 static CBigNum bnProofOfWorkLimitTestNet(~uint256(0) >> 20);
 static CBigNum bnProofOfStakeLimitTestNet(~uint256(0) >> 20);
-CBigNum bnPoWBase = CBigNum(uint256("0x00000000ffff0000000000000000000000000000000000000000000000000000")); // difficulty-1 target
+uint256 nPoWBase = uint256("0x00000000ffff0000000000000000000000000000000000000000000000000000"); // difficulty-1 target
 
 unsigned int nStakeMinAge = 60 * 60 * 24 * 10;	// minimum age for coin age: 10d
 unsigned int nStakeMaxAge = 60 * 60 * 24 * 30;	// stake age of full weight: 30d
@@ -50,8 +50,10 @@ int64 nChainStartTime = 1386399113;
 int nCoinbaseMaturity = 30;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
-CBigNum bnBestChainTrust = 0;
-CBigNum bnBestInvalidTrust = 0;
+
+uint256 nBestChainTrust = 0;
+uint256 nBestInvalidTrust = 0;
+
 uint256 hashBestChain = 0;
 CBlockIndex* pindexBest = NULL;
 int64 nTimeBestReceived = 0;
@@ -1185,24 +1187,24 @@ bool IsInitialBlockDownload()
 
 void static InvalidChainFound(CBlockIndex* pindexNew)
 {
-    if (pindexNew->bnChainTrust > bnBestInvalidTrust)
+    if (pindexNew->nChainTrust > nBestInvalidTrust)
     {
-        bnBestInvalidTrust = pindexNew->bnChainTrust;
-        CTxDB().WriteBestInvalidTrust(bnBestInvalidTrust);
+        nBestInvalidTrust = pindexNew->nChainTrust;
+        CTxDB().WriteBestInvalidTrust(CBigNum(nBestInvalidTrust));
         uiInterface.NotifyBlocksChanged();
     }
 
-    CBigNum bnBestInvalidBlockTrust = pindexNew->bnChainTrust - pindexNew->pprev->bnChainTrust;
-    CBigNum bnBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->bnChainTrust - pindexBest->pprev->bnChainTrust) : pindexBest->bnChainTrust;
+    uint256 nBestInvalidBlockTrust = pindexNew->nChainTrust - pindexNew->pprev->nChainTrust;
+    uint256 nBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->nChainTrust - pindexBest->pprev->nChainTrust) : pindexBest->nChainTrust;
 
-    printf("InvalidChainFound: invalid block=%s  height=%d  trust=%s  blocktrust=%s  date=%s\n",
+    printf("InvalidChainFound: invalid block=%s  height=%d  trust=%s  blocktrust=%"PRI64d"  date=%s\n",
       pindexNew->GetBlockHash().ToString().substr(0,20).c_str(), pindexNew->nHeight,
-      pindexNew->bnChainTrust.ToString().c_str(), bnBestInvalidBlockTrust.ToString().c_str(),
+      CBigNum(pindexNew->nChainTrust).ToString().c_str(), nBestInvalidBlockTrust.Get64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str());
-    printf("InvalidChainFound:  current best=%s  height=%d  trust=%s  blocktrust=%s  date=%s\n",
-      hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, 
-      bnBestChainTrust.ToString().c_str(),
-      bnBestBlockTrust.ToString().c_str(),
+    printf("InvalidChainFound:  current best=%s  height=%d  trust=%s  blocktrust=%"PRI64d"  date=%s\n",
+      hashBestChain.ToString().substr(0,20).c_str(), nBestHeight,
+      CBigNum(pindexBest->nChainTrust).ToString().c_str(),
+      nBestBlockTrust.Get64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 }
 
@@ -1850,7 +1852,7 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
 
         // Reorganize is costly in terms of db load, as it works in a single db transaction.
         // Try to limit how much needs to be done inside
-        while (pindexIntermediate->pprev && pindexIntermediate->pprev->bnChainTrust > pindexBest->bnChainTrust)
+        while (pindexIntermediate->pprev && pindexIntermediate->pprev->nChainTrust > pindexBest->nChainTrust)
         {
             vpindexSecondary.push_back(pindexIntermediate);
             pindexIntermediate = pindexIntermediate->pprev;
@@ -1899,15 +1901,16 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     pindexBest = pindexNew;
     pblockindexFBBHLast = NULL;
     nBestHeight = pindexBest->nHeight;
-    bnBestChainTrust = pindexNew->bnChainTrust;
+    nBestChainTrust = pindexNew->nChainTrust;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
 
-    CBigNum bnBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->bnChainTrust - pindexBest->pprev->bnChainTrust) : pindexBest->bnChainTrust;
+    uint256 nBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->nChainTrust - pindexBest->pprev->nChainTrust) : pindexBest->nChainTrust;
 
-    printf("SetBestChain: new best=%s  height=%d  trust=%s  blocktrust=%s  date=%s\n",
-      hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainTrust.ToString().c_str(),
-      bnBestBlockTrust.ToString().c_str(),
+    printf("SetBestChain: new best=%s  height=%d  trust=%s  blocktrust=%"PRI64d"  date=%s\n",
+      hashBestChain.ToString().substr(0,20).c_str(), nBestHeight,
+      CBigNum(nBestChainTrust).ToString().c_str(),
+      nBestBlockTrust.Get64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 
     // Check the version of the last 100 blocks to see if we need to upgrade:
@@ -2027,7 +2030,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
     }
 
     // ppcoin: compute chain trust score
-    pindexNew->bnChainTrust = (pindexNew->pprev ? pindexNew->pprev->bnChainTrust : 0) + pindexNew->GetBlockTrust();
+    pindexNew->nChainTrust = (pindexNew->pprev ? pindexNew->pprev->nChainTrust : 0) + pindexNew->GetBlockTrust();
 
     // ppcoin: compute stake entropy bit for stake modifier
     if (!pindexNew->SetStakeEntropyBit(GetStakeEntropyBit(pindexNew->nHeight)))
@@ -2066,7 +2069,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         return false;
 
     // New best
-    if (pindexNew->bnChainTrust > bnBestChainTrust)
+    if (pindexNew->nChainTrust > nBestChainTrust)
         if (!SetBestChain(txdb, pindexNew))
             return false;
 
@@ -2292,7 +2295,7 @@ bool CBlock::AcceptBlock()
     return true;
 }
 
-CBigNum CBlockIndex::GetBlockTrust() const
+uint256 CBlockIndex::GetBlockTrust() const
 {
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
@@ -2304,38 +2307,40 @@ CBigNum CBlockIndex::GetBlockTrust() const
     if (IsProofOfStake())
     {
         // Return trust score as usual
-        return (CBigNum(1)<<256) / (bnTarget+1);
+        return ((CBigNum(1)<<256) / (bnTarget+1)).getuint256();
     }
     else
     {
         // Calculate work amount for block
         CBigNum bnPoWTrust = (bnProofOfWorkLimit / (bnTarget+1));
-        return bnPoWTrust > 1 ? bnPoWTrust : 1;
+        return bnPoWTrust > 1 ? bnPoWTrust.getuint256() : uint256(1);
     }
 #else
     /* Old protocol, will be removed later */
     if (!fTestNet && GetBlockTime() < CHAINCHECKS_SWITCH_TIME)
-        return (IsProofOfStake()? (CBigNum(1)<<256) / (bnTarget+1) : 1);
+        return (IsProofOfStake()? ((CBigNum(1)<<256) / (bnTarget+1)).getuint256() : 1);
 
     /* New protocol */
 
     // Calculate work amount for block
-    CBigNum bnPoWTrust = bnPoWBase / (bnTarget+1);
+    uint256 nPoWTrust = (CBigNum(nPoWBase) / (bnTarget+1)).getuint256();
 
-    // Set bnPowTrust to 1 if we are checking PoS block or PoW difficulty is too low
-    bnPoWTrust = (IsProofOfStake() || bnPoWTrust < 1) ? 1 : bnPoWTrust;
+    // Set nPowTrust to 1 if we are checking PoS block or PoW difficulty is too low
+    nPoWTrust = (IsProofOfStake() || nPoWTrust < 1) ? 1 : nPoWTrust;
 
-    // Return bnPoWTrust for the first 12 blocks
+    // Return nPoWTrust for the first 12 blocks
     if (pprev == NULL || pprev->nHeight < 12)
-        return bnPoWTrust;
+        return nPoWTrust;
 
     const CBlockIndex* currentIndex = pprev;
 
     if(IsProofOfStake())
     {
+        CBigNum bnNewTrust = (CBigNum(1)<<256) / (bnTarget+1);
+
         // Return 1/3 of score if parent block is not the PoW block
         if (!pprev->IsProofOfWork())
-            return (CBigNum(1)<<256) / (3 * (bnTarget+1));
+            return (bnNewTrust / 3).getuint256();
 
         int nPoWCount = 0;
 
@@ -2349,15 +2354,17 @@ CBigNum CBlockIndex::GetBlockTrust() const
 
         // Return 1/3 of score if less than 3 PoW blocks found
         if (nPoWCount < 3)
-            return (CBigNum(1)<<256) / (3 * (bnTarget+1));
+            return (bnNewTrust / 3).getuint256();
 
-        return (CBigNum(1)<<256) / (bnTarget+1);
+        return bnNewTrust.getuint256();
     }
     else
     {
-        // Return bnPoWTrust + 2/3 of previous block score if two parent blocks are not PoS blocks
+        CBigNum bnLastBlockTrust = CBigNum(pprev->nChainTrust - pprev->pprev->nChainTrust);
+
+        // Return nPoWTrust + 2/3 of previous block score if two parent blocks are not PoS blocks
         if (!(pprev->IsProofOfStake() && pprev->pprev->IsProofOfStake()))
-            return bnPoWTrust + (2 * (pprev->bnChainTrust - pprev->pprev->bnChainTrust) / 3);
+            return nPoWTrust + (2 * bnLastBlockTrust / 3).getuint256();
 
         int nPoSCount = 0;
 
@@ -2369,17 +2376,19 @@ CBigNum CBlockIndex::GetBlockTrust() const
             currentIndex = currentIndex->pprev;
         }
 
-        // Return bnPoWTrust + 2/3 of previous block score if less than 7 PoS blocks found
+        // Return nPoWTrust + 2/3 of previous block score if less than 7 PoS blocks found
         if (nPoSCount < 7)
-            return bnPoWTrust + (2 * (pprev->bnChainTrust - pprev->pprev->bnChainTrust) / 3);
+            return nPoWTrust + (2 * bnLastBlockTrust / 3).getuint256();
 
         bnTarget.SetCompact(pprev->nBits);
 
         if (bnTarget <= 0)
             return 0;
 
-        // Return bnPoWTrust + full trust score for previous block nBits
-        return bnPoWTrust + (CBigNum(1)<<256) / (bnTarget+1);
+        CBigNum bnNewTrust = (CBigNum(1)<<256) / (bnTarget+1);
+
+        // Return nPoWTrust + full trust score for previous block nBits
+        return nPoWTrust + bnNewTrust.getuint256();
     }
 #endif
 }
