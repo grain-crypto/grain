@@ -42,6 +42,8 @@ static const int GRAIN_SWITCHOVER1_BLOCK = 130000;	// block to switch to fixed d
 static const int GRAIN_SWITCHOVER2_BLOCK = 310000;	// block to switch to delayed bonus block reward
 
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
+static const unsigned int STAKEWEIGHT_SWITCH_TIME = 1401580800; // Sun Jun  1 00:00:00 UTC 2014
+
 
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 // Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
