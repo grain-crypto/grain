@@ -13,7 +13,18 @@
 
 namespace Checkpoints
 {
-    typedef std::map<int, uint256> MapCheckpoints;
+    struct Checkpoint
+    {
+        uint256 hashCheckPoint;
+        unsigned int nTime;
+    };
+
+    typedef std::map<int, Checkpoint> MapCheckpoints;
+
+    Checkpoint initCheckpoint(uint256 hashCheckPoint, unsigned int nTime)
+    {
+        return (struct Checkpoint){hashCheckPoint, nTime};
+    }
 
     //
     // What makes a good checkpoint block?
@@ -24,18 +35,18 @@ namespace Checkpoints
     //
     static MapCheckpoints mapCheckpoints =
         boost::assign::map_list_of
-        ( 0, hashGenesisBlock )
-        ( 10001, uint256("0x000000010e60f3e2fcac1ed5ec9bc59bb453e98375f63c13fb635960f0c83ec1"))
-        ( 30001, uint256("0x000000002fb0103aefd831bfc04e5faa0046a8f858c673b25cde2e303cb7f1f3"))
-        ( 50001, uint256("0x0000000060a6f49e5a54578b8b4e366cb67b67ff2404eaece9b8a8139d7be965"))
-        ( 70001, uint256("0x000000011915ab590fe4b85cb6657c58786eb31ebc674a8aa5eb6dce1382c779"))
-        (100001, uint256("0x3289eccbec732b0b0ba6cd29057ca18cc566598f29ca9eea36dbc385042c22bb"))
-        (110501, uint256("0x4b3dbc18478245e9d9c3a32645c52d18c014ae2b81588091975e362dd1f4810a"))
+        (     0, initCheckpoint(hashGenesisBlock, 1386399123) )
+        ( 10001, initCheckpoint(uint256("0x000000010e60f3e2fcac1ed5ec9bc59bb453e98375f63c13fb635960f0c83ec1"), 1386744728) )
+        ( 30001, initCheckpoint(uint256("0x000000002fb0103aefd831bfc04e5faa0046a8f858c673b25cde2e303cb7f1f3"), 1387361751) )
+        ( 50001, initCheckpoint(uint256("0x0000000060a6f49e5a54578b8b4e366cb67b67ff2404eaece9b8a8139d7be965"), 1388190323) )
+        ( 70001, initCheckpoint(uint256("0x000000011915ab590fe4b85cb6657c58786eb31ebc674a8aa5eb6dce1382c779"), 1388804983) )
+        (100001, initCheckpoint(uint256("0x3289eccbec732b0b0ba6cd29057ca18cc566598f29ca9eea36dbc385042c22bb"), 1389711065) )
+        (110501, initCheckpoint(uint256("0x4b3dbc18478245e9d9c3a32645c52d18c014ae2b81588091975e362dd1f4810a"), 1389988261) )
         ;
 
     static MapCheckpoints mapCheckpointsTestnet =
         boost::assign::map_list_of
-        ( 0, hashGenesisBlockTestNet )
+        ( 0, initCheckpoint(hashGenesisBlockTestNet, 1386399123) )
         ;
 
     bool CheckHardened(int nHeight, const uint256& hash)
@@ -44,7 +55,7 @@ namespace Checkpoints
 
         MapCheckpoints::const_iterator i = checkpoints.find(nHeight);
         if (i == checkpoints.end()) return true;
-        return hash == i->second;
+        return hash == i->second.hashCheckPoint;
     }
 
     int GetTotalBlocksEstimate()
@@ -54,13 +65,20 @@ namespace Checkpoints
         return checkpoints.rbegin()->first;
     }
 
+    int GetLastCheckpointTime()
+    {
+        MapCheckpoints& checkpoints = (fTestNet ? mapCheckpointsTestnet : mapCheckpoints);
+
+        return checkpoints.rbegin()->second.nTime;
+    }
+
     CBlockIndex* GetLastCheckpoint(const std::map<uint256, CBlockIndex*>& mapBlockIndex)
     {
         MapCheckpoints& checkpoints = (fTestNet ? mapCheckpointsTestnet : mapCheckpoints);
 
         BOOST_REVERSE_FOREACH(const MapCheckpoints::value_type& i, checkpoints)
         {
-            const uint256& hash = i.second;
+            const uint256& hash = i.second.hashCheckPoint;
             std::map<uint256, CBlockIndex*>::const_iterator t = mapBlockIndex.find(hash);
             if (t != mapBlockIndex.end())
                 return t->second;
@@ -250,7 +268,7 @@ namespace Checkpoints
     bool ResetSyncCheckpoint()
     {
         LOCK(cs_hashSyncCheckpoint);
-        const uint256& hash = mapCheckpoints.rbegin()->second;
+        const uint256& hash = mapCheckpoints.rbegin()->second.hashCheckPoint;
         if (mapBlockIndex.count(hash) && !mapBlockIndex[hash]->IsInMainChain())
         {
             // checkpoint block accepted but not yet in main chain
@@ -275,7 +293,7 @@ namespace Checkpoints
 
         BOOST_REVERSE_FOREACH(const MapCheckpoints::value_type& i, mapCheckpoints)
         {
-            const uint256& hash = i.second;
+            const uint256& hash = i.second.hashCheckPoint;
             if (mapBlockIndex.count(hash) && mapBlockIndex[hash]->IsInMainChain())
             {
                 if (!WriteSyncCheckpoint(hash))
