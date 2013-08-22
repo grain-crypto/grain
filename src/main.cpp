@@ -4568,17 +4568,17 @@ bool CheckStake(CBlock* pblock, CWallet& wallet)
     return true;
 }
 
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
+void StakeMiner(CWallet *pwallet)
 {
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
     // Make this thread recognisable as the mining thread
-    RenameThread("bitcoin-miner");
+    RenameThread("novacoin-miner");
 
     // Each thread has its own counter
     unsigned int nExtraNonce = 0;
 
-    while (fProofOfStake)
+    while (true)
     {
         if (fShutdown)
             return;
@@ -4586,8 +4586,6 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
         {
             Sleep(1000);
             if (fShutdown)
-                return;
-            if (!fProofOfStake)
                 return;
         }
 
@@ -4603,7 +4601,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
         //
         CBlockIndex* pindexPrev = pindexBest;
 
-        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake));
+        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, true));
         if (!pblock.get())
             return;
         IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
