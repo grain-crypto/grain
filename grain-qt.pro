@@ -120,7 +120,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/util.h \
     src/uint256.h \
     src/kernel.h \
-    src/scrypt_mine.h \
+    src/scrypt.h \
     src/pbkdf2.h \
     src/serialize.h \
     src/strlcpy.h \
@@ -237,7 +237,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/kernel.cpp \
     src/scrypt-x86.S \
     src/scrypt-x86_64.S \
-    src/scrypt_mine.cpp \
+    src/scrypt.cpp \
     src/pbkdf2.cpp
 
 RESOURCES += \
