@@ -21,11 +21,12 @@ unsigned int nModifierInterval = MODIFIER_INTERVAL;
 static std::map<int, unsigned int> mapStakeModifierCheckpoints =
     boost::assign::map_list_of
     (     0, 0x0e00670bu )
-    (   101, 0xb2eda465u )
-    (  1001, 0xaefc95dbu )
     ( 10001, 0x8f4baa9du )
     ( 20001, 0x32b63262u )
-    ( 23801, 0x591b1633u )
+    ( 30001, 0x3d90afe3u )
+    ( 40007, 0x46cdd8e3u )
+    ( 50001, 0x4cd1f576u )
+    ( 50838, 0x5459c9eeu )
 	;
 
 // Get the last stake modifier and its generation time from a given block
