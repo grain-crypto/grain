@@ -2353,18 +2353,12 @@ Address: %4
         <source>Disable sync checkpoints (default: 0)</source>
         <translation>Disable sync checkpoints (default: 0)</translation>
     </message>
-    <message>
         <location line="+5"/>
         <source>Use pooled pubkeys for the last coinstake output (default: 0)</source>
         <translation>Use pooled pubkeys for the last coinstake output (default: 0)</translation>
     </message>
     <message>
-        <location line="+8"/>
-        <source>Which key derivation method to use by default (default: sha512)</source>
-        <translation>Which key derivation method to use by default (default: sha512)</translation>
-    </message>
-    <message>
-        <location line="+11"/>
+        <location line="+12"/>
         <source>Invalid -tor address: &apos;%s&apos;</source>
         <translation>Invalid -tor address: &apos;%s&apos;</translation>
     </message>
