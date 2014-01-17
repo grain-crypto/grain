@@ -1082,12 +1082,12 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
 	{
 		if(nActualSpacing < 0)
 		{
-			// printf(">> nActualSpacing = %"PRI64d" corrected to 2.\n", nActualSpacing);
+			printf(">> nActualSpacing = %"PRI64d" corrected to 2.\n", nActualSpacing);
 			nActualSpacing = 2;
 		}
 		else if(nActualSpacing > nTargetTimespan)
 		{
-			// printf(">> nActualSpacing = %"PRI64d" corrected to nTargetTimespan (900).\n", nActualSpacing);
+			printf(">> nActualSpacing = %"PRI64d" corrected to nTargetTimespan (900).\n", nActualSpacing);
 			nActualSpacing = nTargetTimespan;
 		}
 	}
@@ -1096,17 +1096,25 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     // ppcoin: retarget with exponential moving toward target spacing
     CBigNum bnNew;
     bnNew.SetCompact(pindexPrev->nBits);
-    int64 nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+
+	int64 nTargetSpacingWorkMax0 = nTargetSpacingWorkMax;
+	if(pindexLast->nHeight > GRAIN_SWITCHOVER1_BLOCK)	// from GRAIN_SWITCHOVER1_BLOCK, nTargetSpacingWorkMax0 is set to 3 * nStakeTargetSpacing
+	{
+		nTargetSpacingWorkMax0 = 3 * nStakeTargetSpacing;
+	}
+
+    int64 nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax0, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
     int64 nInterval = nTargetTimespan / nTargetSpacing;
     bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
     bnNew /= ((nInterval + 1) * nTargetSpacing);
-
+	
 	/*
 	printf(">> Height = %d, fProofOfStake = %d, nInterval = %"PRI64d", nTargetSpacing = %"PRI64d", nActualSpacing = %"PRI64d"\n", 
 		pindexPrev->nHeight, fProofOfStake, nInterval, nTargetSpacing, nActualSpacing);  
 	printf(">> pindexPrev->GetBlockTime() = %"PRI64d", pindexPrev->nHeight = %d, pindexPrevPrev->GetBlockTime() = %"PRI64d", pindexPrevPrev->nHeight = %d\n", 
 		pindexPrev->GetBlockTime(), pindexPrev->nHeight, pindexPrevPrev->GetBlockTime(), pindexPrevPrev->nHeight);  
 	*/
+
     if (bnNew > bnTargetLimit)
         bnNew = bnTargetLimit;
 
