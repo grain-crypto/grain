@@ -1082,12 +1082,12 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
 	{
 		if(nActualSpacing < 0)
 		{
-			printf(">> nActualSpacing = %"PRI64d" corrected to 2.\n", nActualSpacing);
+			// printf(">> nActualSpacing = %"PRI64d" corrected to 2.\n", nActualSpacing);
 			nActualSpacing = 2;
 		}
 		else if(nActualSpacing > nTargetTimespan)
 		{
-			printf(">> nActualSpacing = %"PRI64d" corrected to nTargetTimespan (900).\n", nActualSpacing);
+			// printf(">> nActualSpacing = %"PRI64d" corrected to nTargetTimespan (900).\n", nActualSpacing);
 			nActualSpacing = nTargetTimespan;
 		}
 	}
