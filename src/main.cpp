@@ -967,15 +967,17 @@ int64 GetProofOfWorkReward(int nHeight, int64 nFees, uint256 prevHash)
 	long seed = hex2long(cseed);
 	nSubsidy += generateMTRandom(seed, 1024) * COIN;
 
-	int count9 = get9Counts(prevHash);
+	if (nHeight < GRAIN_SWITCHOVER2_BLOCK) {
+	    int count9 = get9Counts(prevHash);
 
-	if(count9 > 8)
-	{
+	    if(count9 > 8)
+	    {
 		nSubsidy *= 64;
-	}
-	else if(count9 > 6)	
-	{
+	    }
+	    else if(count9 > 6)	
+	    {
 		nSubsidy *= 8;
+	    }
 	}
 
 	if(nHeight == 1)
@@ -991,6 +993,26 @@ int64 GetProofOfWorkReward(int nHeight, int64 nFees, uint256 prevHash)
 
     return nSubsidy + nFees;
 }
+
+// miner's coin base bonus block extra reward
+int64 GetProofOfWorkBlockBonusRewardFactor(CBlockIndex* pindex) 
+{
+	if (pindex->nHeight < GRAIN_SWITCHOVER2_BLOCK || !pindex->IsProofOfWork())
+	    return 0;
+	
+	uint256 hash = pindex->GetBlockHash();
+
+	int count9 = get9Counts(hash);
+
+	if(count9 > 8)
+	    return 63; // The 1/64 is already paid
+
+	if(count9 > 6)
+	    return 7; // The 1/8 is already paid
+
+	return 0;
+}
+
 
 // miner's coin stake reward based on nBits and coin age spent (coin-days)
 // simple algorithm, not depend on the diff
@@ -2068,10 +2090,12 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot) const
     if (GetBlockTime() > GetAdjustedTime() + nMaxClockDrift)
         return error("CheckBlock() : block timestamp too far in the future");
 
-    // First transaction must be coinbase, the rest must not be
+    // First transaction must be coinbase
+    // The second for PoW blocks or third for PoS could be coinbase also
+    // The rest must not be
     if (vtx.empty() || !vtx[0].IsCoinBase())
         return DoS(100, error("CheckBlock() : first tx is not coinbase"));
-    for (unsigned int i = 1; i < vtx.size(); i++)
+    for (unsigned int i = IsProofOfStake()?3:2; i < vtx.size(); i++)
         if (vtx[i].IsCoinBase())
             return DoS(100, error("CheckBlock() : more than one coinbase"));
 
@@ -2154,6 +2178,34 @@ bool CBlock::AcceptBlock()
     // Check timestamp against prev
     if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
         return error("AcceptBlock() : block's timestamp is too early");
+
+    // Check that bonus block reward tx is present when necessary and absent otherwise
+    int64 nBonusReward = GetProofOfWorkBlockBonusRewardFactor(pindexPrev);
+    for (unsigned i = 1; i < vtx.size(); i++)
+	if (vtx[i].IsCoinBase())
+	{
+	    if (nBonusReward <= 0) 
+		return DoS(100, error("AcceptBlock() : more than one coinbase"));
+
+	    CBlock prevBlock;
+	    prevBlock.ReadFromDisk(pindexPrev, true);
+	    if (prevBlock.vtx[0].nTime != vtx[i].nTime ||
+		    prevBlock.vtx[0].vout.size() != vtx[i].vout.size())
+		return DoS(100, error("AcceptBlock() : incorrect bonus block reward tx"));
+	    
+	    for (unsigned j = 0; j < vtx[i].vout.size(); j++)
+		if (prevBlock.vtx[0].vout[j].nValue * nBonusReward != vtx[i].vout[j].nValue ||
+			prevBlock.vtx[0].vout[j].scriptPubKey != vtx[i].vout[j].scriptPubKey)
+		    return DoS(100, error("AcceptBlock() : incorrect vout in bonus block reward tx"));
+	    nBonusReward = 0;
+
+//	    if (fDebug)
+		printf("AcceptBlock() : good bonus block reward tx %s\n", vtx[i].GetHash().ToString().c_str());
+	
+	}
+	
+    if (nBonusReward > 0)
+	return DoS(100, error("AcceptBlock() : missing bonus block reward tx"));
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -4006,6 +4058,22 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake)
             nLastCoinStakeSearchInterval = nSearchTime - nLastCoinStakeSearchTime;
             nLastCoinStakeSearchTime = nSearchTime;
         }
+    }
+
+    // Check if the previous block was a bonus block and create a reward tx if necessary
+    // The reward tx will be a copy of the bonus block coinbase tx with the outputs adjusted proportionally
+    int64 nBonusReward = GetProofOfWorkBlockBonusRewardFactor(pindexPrev);
+    if (nBonusReward > 0)
+    {
+	CBlock prevBlock;
+	prevBlock.ReadFromDisk(pindexPrev, true);
+	
+	CTransaction txReward = prevBlock.vtx[0];
+	for (unsigned i = 0; i < txReward.vout.size(); i++)
+	    txReward.vout[i].nValue *= nBonusReward;
+
+	// Add bonus block reward tx
+	pblock->vtx.push_back(txReward);
     }
 
     pblock->nBits = GetNextTargetRequired(pindexPrev, pblock->IsProofOfStake());
