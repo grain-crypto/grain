@@ -139,7 +139,7 @@ OBJS= \
 all: graind
 
 test check: test_grain FORCE
-	./test_BottleCaps
+	./test_grain
 
 # auto-generated dependencies:
 -include obj/*.P

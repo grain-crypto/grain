@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
     // Application identification (must be set before OptionsModel is initialized,
     // as it is used to locate QSettings)
     app.setOrganizationName("Grain");
-    app.setOrganizationDomain("Grain.su");
+    app.setOrganizationDomain("graincoin.net");
     if(GetBoolArg("-testnet")) // Separate UI settings for testnet
         app.setApplicationName("Grain-Qt-testnet");
     else

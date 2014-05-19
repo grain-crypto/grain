@@ -94,7 +94,8 @@
         <string>
 Copyright © 2009-2012 Bitcoin Developers
 Copyright © 2012 PPCoin Developers
-Copyright © 2013 Grain Developers
+Copyright © 2009-2012 The NovaCoin developers
+Copyright © 2013-2014 Grain Developers
 </string>
        </property>
        <property name="textInteractionFlags">

@@ -53,7 +53,7 @@ static const int fHaveUPnP = true;
 static const int fHaveUPnP = false;
 #endif
 
-static const uint256 hashGenesisBlockOfficial("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
+static const uint256 hashGenesisBlock("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
 static const uint256 hashGenesisBlockTestNet ("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
 
 static const int64 nMaxClockDrift = 2 * 60 * 60;        // two hours
@@ -64,7 +64,6 @@ extern CScript COINBASE_FLAGS;
 extern CCriticalSection cs_main;
 extern std::map<uint256, CBlockIndex*> mapBlockIndex;
 extern std::set<std::pair<COutPoint, unsigned int> > setStakeSeen;
-extern uint256 hashGenesisBlock;
 extern CBlockIndex* pindexGenesisBlock;
 extern unsigned int nStakeMinAge;
 extern int nCoinbaseMaturity;
@@ -435,7 +434,6 @@ class CTransaction
 {
 public:
     static const int CURRENT_VERSION=1;
-
     int nVersion;
     unsigned int nTime;
     std::vector<CTxIn> vin;
@@ -459,7 +457,7 @@ public:
         READWRITE(vin);
         READWRITE(vout);
         READWRITE(nLockTime);
-	)
+    )
 
     void SetNull()
     {
@@ -656,9 +654,7 @@ public:
             nVersion,
             vin.size(),
             vout.size(),
-            nLockTime
-			);
-
+            nLockTime);
         for (unsigned int i = 0; i < vin.size(); i++)
             str += "    " + vin[i].ToString() + "\n";
         for (unsigned int i = 0; i < vout.size(); i++)
