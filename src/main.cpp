@@ -2142,7 +2142,7 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot) const
                    FormatMoney(vtx[0].GetValueOut()).c_str(),
                    FormatMoney(GetProofOfWorkReward(nBits) - nFee).c_str()));
     }
-#else
+#endif
 
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, vtx)
