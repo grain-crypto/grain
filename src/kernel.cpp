@@ -280,7 +280,7 @@ bool CheckStakeKernelHash(unsigned int nBits, const CBlock& blockFrom, unsigned 
     // this change increases active coins participating the hash and helps
     // to secure the network when proof-of-stake difficulty is low
     //
-    // Disabled for the moment, needs some discussion. That's planned to make this active since 01 Jan 2014
+    // Disabled for the moment, needs some discussion. That's planned to make this active since 01 Jun 2014
 
     if(fTestNet || (false && STAKEWEIGHT_SWITCH_TIME < nTimeTx))
         nTimeWeight = min((int64)nTimeTx - txPrev.nTime - nStakeMinAge, (int64)nStakeMaxAge);
