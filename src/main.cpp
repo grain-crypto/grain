@@ -2147,6 +2147,10 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) c
     else
     {
 #if 0
+
+        // Coinbase fee paid until 20 Sep 2013
+        int64 nFee = GetBlockTime() < CHAINCHECKS_SWITCH_TIME ? vtx[0].GetMinFee() - MIN_TX_FEE : 0;
+
         // Check coinbase reward
         if (vtx[0].GetValueOut() > (GetProofOfWorkReward(nBits) - nFee))
             return DoS(50, error("CheckBlock() : coinbase reward exceeded (actual=%"PRI64d" vs calculated=%"PRI64d")",
@@ -3600,10 +3604,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else if (strCommand == "getaddr")
     {
+        // Don't return addresses older than nCutOff timestamp
+        int64 nCutOff = GetTime() - (nNodeLifespan * 24 * 60 * 60);
         pfrom->vAddrToSend.clear();
         vector<CAddress> vAddr = addrman.GetAddr();
         BOOST_FOREACH(const CAddress &addr, vAddr)
-            pfrom->PushAddress(addr);
+            if(addr.nTime > nCutOff)
+                pfrom->PushAddress(addr);
     }
 
 
