@@ -1428,18 +1428,18 @@ uint64 CWallet::GetStakeWeight(const CKeyStore& keystore, enum StakeWeightMode m
 
         int64 nTimeWeight;
 
-        // Kernel hash weight starts from 0 at the 30-day min age
+        // Kernel hash weight starts from 0 at the 10-day min age
         // this change increases active coins participating the hash and helps
         // to secure the network when proof-of-stake difficulty is low
         //
-        if(fTestNet || (STAKEWEIGHT_SWITCH_TIME < nTime))
+        if(fTestNet || (GRAIN_SWITCHOVER3_TIME < nTime))
         {
-            // New rule since 01 Jan 2014: Maximum TimeWeight is 90 days.
+            // New rule since 01 Jan 2014: Maximum TimeWeight is 30 days.
             nTimeWeight = min((int64)GetTime() - nTime - nStakeMinAge, (int64)nStakeMaxAge);
         }
         else
         {
-            // Current rule: Maximum TimeWeight is 60 days.
+            // Current rule: Maximum TimeWeight is 20 days.
             nTimeWeight = min((int64)GetTime() - nTime, (int64)nStakeMaxAge) - nStakeMinAge;
         }
 
@@ -1465,10 +1465,11 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 	if(pIndex0->pprev)
 		nCombineThreshold = GetProofOfWorkReward(pIndex0->nHeight, MIN_TX_FEE, pIndex0->pprev->GetBlockHash()) / 3;
 
+    CBlockIndex* pindexPrev = pindexBest;
+
     CBigNum bnTargetPerCoinDay;
     bnTargetPerCoinDay.SetCompact(nBits);
 
-    LOCK2(cs_main, cs_wallet);
     txNew.vin.clear();
     txNew.vout.clear();
     // Mark coin stake transaction
@@ -1491,17 +1492,21 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         return false;
     int64 nCredit = 0;
     CScript scriptPubKeyKernel;
+    CTxDB txdb("r");
     BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
     {
-        CTxDB txdb("r");
         CTxIndex txindex;
-        if (!txdb.ReadTxIndex(pcoin.first->GetHash(), txindex))
-            continue;
-
-        // Read block header
         CBlock block;
-        if (!block.ReadFromDisk(txindex.pos.nFile, txindex.pos.nBlockPos, false))
-            continue;
+        {
+            LOCK2(cs_main, cs_wallet);
+
+            if (!txdb.ReadTxIndex(pcoin.first->GetHash(), txindex))
+                continue;
+
+            // Read block header
+            if (!block.ReadFromDisk(txindex.pos.nFile, txindex.pos.nBlockPos, false))
+                continue;
+        }
         static int nMaxStakeSearchInterval = 60;
         if (block.GetBlockTime() + nStakeMinAge > txNew.nTime - nMaxStakeSearchInterval)
             continue; // only count coins meeting min age requirement
@@ -1509,6 +1514,9 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         bool fKernelFound = false;
         for (unsigned int n=0; n<min(nSearchInterval,(int64)nMaxStakeSearchInterval) && !fKernelFound && !fShutdown; n++)
         {
+            if (pindexPrev != pindexBest) 
+                return false;
+
             // Search backward in time from the given txNew timestamp 
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
             uint256 hashProofOfStake = 0, targetProofOfStake = 0;

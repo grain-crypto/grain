@@ -1182,7 +1182,7 @@ bool IsInitialBlockDownload()
         nLastUpdate = GetTime();
     }
     return (GetTime() - nLastUpdate < 10 &&
-            pindexBest->GetBlockTime() < GetTime() - 24 * 60 * 60);
+            pindexBest->GetBlockTime() < GetTime() - nMaxClockDrift*2);
 }
 
 void static InvalidChainFound(CBlockIndex* pindexNew)
@@ -2310,22 +2310,21 @@ uint256 CBlockIndex::GetBlockTrust() const
     if (bnTarget <= 0)
         return 0;
 
-#if 1
-    if (IsProofOfStake())
+    /* Old protocol */
+    if (!fTestNet && GetBlockTime() < GRAIN_SWITCHOVER3_TIME)
     {
-        // Return trust score as usual
-        return ((CBigNum(1)<<256) / (bnTarget+1)).getuint256();
+        if (IsProofOfStake())
+        {
+            // Return trust score as usual
+            return ((CBigNum(1)<<256) / (bnTarget+1)).getuint256();
+        }
+        else
+        {
+            // Calculate work amount for block
+            CBigNum bnPoWTrust = (bnProofOfWorkLimit / (bnTarget+1));
+            return bnPoWTrust > 1 ? bnPoWTrust.getuint256() : uint256(1);
+        }
     }
-    else
-    {
-        // Calculate work amount for block
-        CBigNum bnPoWTrust = (bnProofOfWorkLimit / (bnTarget+1));
-        return bnPoWTrust > 1 ? bnPoWTrust.getuint256() : uint256(1);
-    }
-#else
-    /* Old protocol, will be removed later */
-    if (!fTestNet && GetBlockTime() < CHAINCHECKS_SWITCH_TIME)
-        return (IsProofOfStake()? ((CBigNum(1)<<256) / (bnTarget+1)).getuint256() : 1);
 
     /* New protocol */
 
@@ -2397,7 +2396,6 @@ uint256 CBlockIndex::GetBlockTrust() const
         // Return nPoWTrust + full trust score for previous block nBits
         return nPoWTrust + bnNewTrust.getuint256();
     }
-#endif
 }
 
 bool CBlockIndex::IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned int nRequired, unsigned int nToCheck)

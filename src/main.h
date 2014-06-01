@@ -40,9 +40,9 @@ static const int64 MAX_MINT_PROOF_OF_STAKE = 0.05 * COIN;	// 5% annual interest
 static const int GRAIN_SWITCHOVER_BLOCK = 92000;	// block to switch to fixed diff re-adjustment algorithm (fix out of sequence)
 static const int GRAIN_SWITCHOVER1_BLOCK = 130000;	// block to switch to fixed diff re-adjustment algorithm (change max PoW adjust to 3X)
 static const int GRAIN_SWITCHOVER2_BLOCK = 310000;	// block to switch to delayed bonus block reward
+static const unsigned int GRAIN_SWITCHOVER3_TIME = 1401926400; // Thu Jun  5 00:00:00 UTC 2014
 
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
-static const unsigned int STAKEWEIGHT_SWITCH_TIME = 1401580800; // Sun Jun  1 00:00:00 UTC 2014
 
 
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
