@@ -4,6 +4,7 @@
 
 USE_UPNP:=0
 USE_IPV6:=1
+USE_LEVELDB:=1
 
 LINK:=$(CXX)
 
@@ -114,6 +115,7 @@ OBJS= \
     obj/irc.o \
     obj/keystore.o \
     obj/main.o \
+    obj/miner.o \
     obj/net.o \
     obj/protocol.o \
     obj/bitcoinrpc.o \
@@ -131,15 +133,31 @@ OBJS= \
     obj/noui.o \
     obj/kernel.o \
     obj/pbkdf2.o \
-    obj/scrypt_mine.o \
+    obj/scrypt.o \
     obj/scrypt-x86.o \
     obj/scrypt-x86_64.o
 
 
 all: graind
 
+#
+# LevelDB support
+#
+ifeq (${USE_LEVELDB}, 1)
+LIBS += $(CURDIR)/leveldb/libleveldb.a $(CURDIR)/leveldb/libmemenv.a
+DEFS += $(addprefix -I,$(CURDIR)/leveldb/include) -DUSE_LEVELDB
+DEFS += $(addprefix -I,$(CURDIR)/leveldb/helpers)
+OBJS += obj/txdb-leveldb.o
+leveldb/libleveldb.a:
+	@echo "Building LevelDB ..."; cd leveldb; make libleveldb.a libmemenv.a; cd ..;
+obj/txdb-leveldb.o: leveldb/libleveldb.a
+endif
+ifneq (${USE_LEVELDB}, 1)
+OBJS += obj/txdb-bdb.o
+endif
+
 test check: test_grain FORCE
-	./test_BottleCaps
+	./test_grain
 
 # auto-generated dependencies:
 -include obj/*.P

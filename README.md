@@ -1,7 +1,7 @@
 
-Grain (GRA) 
+GrainCoin (GRA) 
 
-Grain is a PoW/PoS coin that is designed to be the unit of cybercoin. It has a total of 50 billion unit to be released, through a fair p2p mining process. Grain is from the family of PPCoin/Novacoin with latest available algorithms that fixed various problems in the PoW/PoS coins. As compared to the PoW only coins, the proof of stake coins are more resilient to 51% attack. Also it is a long term energy-efficient crypto-currency since not all coins are obtained by mining.
+GrainCoin is a PoW/PoS hybrid coin that is designed to be the unit of cybercoin. It has a total of 50 billion unit to be released, through a fair p2p mining process. Grain is from the family of PPCoin/Novacoin with latest available algorithms that fixed various problems in the PoW/PoS coins. As compared to the PoW only coins, the proof of stake coins are more resilient to 51% attack. Also it is a long term energy-efficient crypto-currency since not all coins are obtained by mining.
 
 Each grain block provides random 1024 - 2048 grains initially. It also provides rare superblocks. The coin uses hash-based algorithm to determine superblocks based on the number of 9s in the previous block hash. It works as follows:
 - the hash contains six 9s or less: regular block

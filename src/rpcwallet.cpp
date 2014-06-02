@@ -77,6 +77,7 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("newmint",       ValueFromAmount(pwalletMain->GetNewMint())));
     obj.push_back(Pair("stake",         ValueFromAmount(pwalletMain->GetStake())));
     obj.push_back(Pair("blocks",        (int)nBestHeight));
+    obj.push_back(Pair("timeoffset",    (boost::int64_t)GetTimeOffset()));
     obj.push_back(Pair("moneysupply",   ValueFromAmount(pindexBest->nMoneySupply)));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
     obj.push_back(Pair("proxy",         (proxy.first.IsValid() ? proxy.first.ToStringIPPort() : string())));
@@ -84,7 +85,7 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("testnet",       fTestNet));
     obj.push_back(Pair("keypoololdest", (boost::int64_t)pwalletMain->GetOldestKeyPoolTime()));
-    obj.push_back(Pair("keypoolsize",   pwalletMain->GetKeyPoolSize()));
+    obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));
     obj.push_back(Pair("paytxfee",      ValueFromAmount(nTransactionFee)));
     if (pwalletMain->IsCrypted())
         obj.push_back(Pair("unlocked_until", (boost::int64_t)nWalletUnlockTime / 1000));
@@ -553,12 +554,12 @@ Value getbalance(const Array& params, bool fHelp)
     if (params[0].get_str() == "*") {
         // Calculate total balance a different way from GetBalance()
         // (GetBalance() sums up all unspent TxOuts)
-        // getbalance and getbalance '*' should always return the same number.
+        // getbalance and getbalance '*' 0 should return the same number.
         int64 nBalance = 0;
         for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
         {
             const CWalletTx& wtx = (*it).second;
-            if (!wtx.IsFinal())
+            if (!wtx.IsConfirmed())
                 continue;
 
             int64 allGeneratedImmature, allGeneratedMature, allFee;
@@ -825,6 +826,29 @@ Value addmultisigaddress(const Array& params, bool fHelp)
     return CBitcoinAddress(innerID).ToString();
 }
 
+Value addredeemscript(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        string msg = "addredeemscript <redeemScript> [account]\n"
+            "Add a P2SH address with a specified redeemScript to the wallet.\n"
+            "If [account] is specified, assign address to [account].";
+        throw runtime_error(msg);
+    }
+
+    string strAccount;
+    if (params.size() > 1)
+        strAccount = AccountFromValue(params[1]);
+
+    // Construct using pay-to-script-hash:
+    vector<unsigned char> innerData = ParseHexV(params[0], "redeemScript");
+    CScript inner(innerData.begin(), innerData.end());
+    CScriptID innerID = inner.GetID();
+    pwalletMain->AddCScript(inner);
+
+    pwalletMain->SetAddressBookName(innerID, strAccount);
+    return CBitcoinAddress(innerID).ToString();
+}
 
 struct tallyitem
 {
@@ -958,6 +982,13 @@ Value listreceivedbyaccount(const Array& params, bool fHelp)
     return ListReceived(params, true);
 }
 
+static void MaybePushAddress(Object & entry, const CTxDestination &dest)
+{
+    CBitcoinAddress addr;
+    if (addr.Set(dest))
+        entry.push_back(Pair("address", addr.ToString()));
+}
+
 void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDepth, bool fLong, Array& ret)
 {
     int64 nGeneratedImmature, nGeneratedMature, nFee;
@@ -996,8 +1027,14 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
         {
             Object entry;
             entry.push_back(Pair("account", strSentAccount));
-            entry.push_back(Pair("address", CBitcoinAddress(s.first).ToString()));
-            entry.push_back(Pair("category", "send"));
+            MaybePushAddress(entry, s.first);
+
+            if (wtx.GetDepthInMainChain() < 0) {
+                entry.push_back(Pair("category", "conflicted"));
+            } else {
+                entry.push_back(Pair("category", "send"));
+            }
+
             entry.push_back(Pair("amount", ValueFromAmount(-s.second)));
             entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
             if (fLong)
@@ -1018,7 +1055,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             {
                 Object entry;
                 entry.push_back(Pair("account", account));
-                entry.push_back(Pair("address", CBitcoinAddress(r.first).ToString()));
+                MaybePushAddress(entry, r.first);
                 if (wtx.IsCoinBase())
                 {
                     if (wtx.GetDepthInMainChain() < 1)
@@ -1314,17 +1351,24 @@ Value backupwallet(const Array& params, bool fHelp)
 
 Value keypoolrefill(const Array& params, bool fHelp)
 {
-    if (fHelp || params.size() > 0)
+    if (fHelp || params.size() > 1)
         throw runtime_error(
-            "keypoolrefill\n"
+            "keypoolrefill [new-size]\n"
             "Fills the keypool."
             + HelpRequiringPassphrase());
 
+    unsigned int nSize = max(GetArg("-keypool", 100), 0LL);
+    if (params.size() > 0) {
+        if (params[0].get_int() < 0)
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, expected valid size");
+        nSize = (unsigned int) params[0].get_int();
+    }
+
     EnsureWalletIsUnlocked();
 
-    pwalletMain->TopUpKeyPool();
+    pwalletMain->TopUpKeyPool(nSize);
 
-    if (pwalletMain->GetKeyPoolSize() < GetArg("-keypool", 100))
+    if (pwalletMain->GetKeyPoolSize() < nSize)
         throw JSONRPCError(RPC_WALLET_ERROR, "Error refreshing keypool.");
 
     return Value::null;
@@ -1541,6 +1585,7 @@ public:
         int nRequired;
         ExtractDestinations(subscript, whichType, addresses, nRequired);
         obj.push_back(Pair("script", GetTxnOutputType(whichType)));
+        obj.push_back(Pair("hex", HexStr(subscript.begin(), subscript.end())));
         Array a;
         BOOST_FOREACH(const CTxDestination& addr, addresses)
             a.push_back(CBitcoinAddress(addr).ToString());

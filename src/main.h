@@ -9,7 +9,7 @@
 #include "sync.h"
 #include "net.h"
 #include "script.h"
-#include "scrypt_mine.h"
+#include "scrypt.h"
 
 #include <list>
 
@@ -40,8 +40,10 @@ static const int64 MAX_MINT_PROOF_OF_STAKE = 0.05 * COIN;	// 5% annual interest
 static const int GRAIN_SWITCHOVER_BLOCK = 92000;	// block to switch to fixed diff re-adjustment algorithm (fix out of sequence)
 static const int GRAIN_SWITCHOVER1_BLOCK = 130000;	// block to switch to fixed diff re-adjustment algorithm (change max PoW adjust to 3X)
 static const int GRAIN_SWITCHOVER2_BLOCK = 310000;	// block to switch to delayed bonus block reward
+static const unsigned int GRAIN_SWITCHOVER3_TIME = 1401926400; // Thu Jun  5 00:00:00 UTC 2014
 
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
+
 
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 // Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
@@ -53,7 +55,7 @@ static const int fHaveUPnP = true;
 static const int fHaveUPnP = false;
 #endif
 
-static const uint256 hashGenesisBlockOfficial("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
+static const uint256 hashGenesisBlock("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
 static const uint256 hashGenesisBlockTestNet ("0x1e4e17cf6e6d757540b5d306578b1ce8ed44f5189bc66c893acba0307953f571");
 
 static const int64 nMaxClockDrift = 2 * 60 * 60;        // two hours
@@ -64,13 +66,13 @@ extern CScript COINBASE_FLAGS;
 extern CCriticalSection cs_main;
 extern std::map<uint256, CBlockIndex*> mapBlockIndex;
 extern std::set<std::pair<COutPoint, unsigned int> > setStakeSeen;
-extern uint256 hashGenesisBlock;
 extern CBlockIndex* pindexGenesisBlock;
 extern unsigned int nStakeMinAge;
+extern unsigned int nNodeLifespan;
 extern int nCoinbaseMaturity;
 extern int nBestHeight;
-extern CBigNum bnBestChainTrust;
-extern CBigNum bnBestInvalidTrust;
+extern uint256 nBestChainTrust;
+extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
 extern unsigned int nTransactionsUpdated;
@@ -78,8 +80,6 @@ extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
 extern int64 nLastCoinStakeSearchInterval;
 extern const std::string strMessageMagic;
-extern double dHashesPerSec;
-extern int64 nHPSTimerStart;
 extern int64 nTimeBestReceived;
 extern CCriticalSection cs_setpwalletRegistered;
 extern std::set<CWallet*> setpwalletRegistered;
@@ -88,6 +88,9 @@ extern std::map<uint256, CBlock*> mapOrphanBlocks;
 
 // Settings
 extern int64 nTransactionFee;
+extern bool fStakeUsePooledKeys;
+extern bool fUseFastIndex;
+extern unsigned int nDerivationMethodIndex;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
@@ -109,14 +112,16 @@ void PrintBlockTree();
 CBlockIndex* FindBlockByHeight(int nHeight);
 bool ProcessMessages(CNode* pfrom);
 bool SendMessages(CNode* pto, bool fSendTrickle);
-bool LoadExternalBlockFile(FILE* fileIn);
-void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false);
-void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
-void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
-bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
+
+// Processes a blk*.dat file and fires the given signal to indicate how far
+// through the file the load has reached, if provided.
+typedef boost::signals2::signal<void (unsigned int bytesRead)> ExternalBlockFileProgress;
+bool LoadExternalBlockFile(FILE* fileIn, ExternalBlockFileProgress *progress=NULL);
+
 bool CheckProofOfWork(uint256 hash, unsigned int nBits);
-int64 GetProofOfWorkReward(int nHeight, int64 nFees, uint256 prevHash);
+long GetProofOfWorkBlockBonusRewardFactor(CBlockIndex* pindex);
+unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
+int64 GetProofOfWorkReward(int nHeight, int64 nFees, const uint256& prevHash);
 int64 GetProofOfStakeReward(int64 nCoinAge, unsigned int nBits, unsigned int nTime);
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime);
 unsigned int ComputeMinStake(unsigned int nBase, int64 nTime, unsigned int nBlockTime);
@@ -126,7 +131,7 @@ std::string GetWarnings(std::string strFor);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake);
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
+void StakeMiner(CWallet *pwallet);
 void ResendWalletTransactions();
 
 
@@ -435,7 +440,6 @@ class CTransaction
 {
 public:
     static const int CURRENT_VERSION=1;
-
     int nVersion;
     unsigned int nTime;
     std::vector<CTxIn> vin;
@@ -459,7 +463,7 @@ public:
         READWRITE(vin);
         READWRITE(vout);
         READWRITE(nLockTime);
-	)
+    )
 
     void SetNull()
     {
@@ -656,9 +660,7 @@ public:
             nVersion,
             vin.size(),
             vout.size(),
-            nLockTime
-			);
-
+            nLockTime);
         for (unsigned int i = 0; i < vin.size(); i++)
             str += "    " + vin[i].ToString() + "\n";
         for (unsigned int i = 0; i < vout.size(); i++)
@@ -912,14 +914,7 @@ public:
 
     uint256 GetHash() const
     {
-        uint256 thash;
-        void * scratchbuff = scrypt_buffer_alloc();
-
-        scrypt_hash(CVOIDBEGIN(nVersion), sizeof(block_header), UINTBEGIN(thash), scratchbuff);
-
-        scrypt_buffer_free(scratchbuff);
-
-        return thash;
+        return scrypt_blockhash(CVOIDBEGIN(nVersion));
     }
 
     int64 GetBlockTime() const
@@ -930,12 +925,12 @@ public:
     void UpdateTime(const CBlockIndex* pindexPrev);
 
     // ppcoin: entropy bit for stake modifier if chosen by modifier
-    unsigned int GetStakeEntropyBit(unsigned int nHeight) const
+    unsigned int GetStakeEntropyBit(unsigned int nTime) const
     {
         // Take last bit of block hash as entropy bit
         unsigned int nEntropyBit = ((GetHash().Get64()) & 1llu);
         if (fDebug && GetBoolArg("-printstakemodifier"))
-            printf("GetStakeEntropyBit: nHeight=%u hashBlock=%s nEntropyBit=%u\n", nHeight, GetHash().ToString().c_str(), nEntropyBit);
+            printf("GetStakeEntropyBit: nTime=%u hashBlock=%s nEntropyBit=%u\n", nTime, GetHash().ToString().c_str(), nEntropyBit);
         return nEntropyBit;
     }
 
@@ -1096,11 +1091,11 @@ public:
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
     bool SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew);
     bool AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos);
-    bool CheckBlock(bool fCheckPOW=true, bool fCheckMerkleRoot=true) const;
+    bool CheckBlock(bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
     bool AcceptBlock();
     bool GetCoinAge(uint64& nCoinAge) const; // ppcoin: calculate total coin age spent in block
     bool SignBlock(const CKeyStore& keystore);
-    bool CheckBlockSignature() const;
+    bool CheckBlockSignature(bool fProofOfStake) const;
 
 private:
     bool SetBestChainInner(CTxDB& txdb, CBlockIndex *pindexNew);
@@ -1126,7 +1121,7 @@ public:
     CBlockIndex* pnext;
     unsigned int nFile;
     unsigned int nBlockPos;
-    CBigNum bnChainTrust; // ppcoin: trust score of block chain
+    uint256 nChainTrust; // ppcoin: trust score of block chain
     int nHeight;
 
     int64 nMint;
@@ -1163,7 +1158,7 @@ public:
         nFile = 0;
         nBlockPos = 0;
         nHeight = 0;
-        bnChainTrust = 0;
+        nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
         nFlags = 0;
@@ -1188,7 +1183,7 @@ public:
         nFile = nFileIn;
         nBlockPos = nBlockPosIn;
         nHeight = 0;
-        bnChainTrust = 0;
+        nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
         nFlags = 0;
@@ -1237,7 +1232,7 @@ public:
         return (int64)nTime;
     }
 
-    CBigNum GetBlockTrust() const;
+    uint256 GetBlockTrust() const;
 
     bool IsInMainChain() const
     {
@@ -1349,6 +1344,9 @@ public:
 /** Used to marshal pointers into hashes for db storage. */
 class CDiskBlockIndex : public CBlockIndex
 {
+private:
+    uint256 blockHash;
+
 public:
     uint256 hashPrev;
     uint256 hashNext;
@@ -1357,6 +1355,7 @@ public:
     {
         hashPrev = 0;
         hashNext = 0;
+        blockHash = 0;
     }
 
     explicit CDiskBlockIndex(CBlockIndex* pindex) : CBlockIndex(*pindex)
@@ -1398,10 +1397,14 @@ public:
         READWRITE(nTime);
         READWRITE(nBits);
         READWRITE(nNonce);
+        READWRITE(blockHash);
     )
 
     uint256 GetBlockHash() const
     {
+        if (fUseFastIndex && (nTime < GetAdjustedTime() - 12 * nMaxClockDrift) && blockHash != 0)
+            return blockHash;
+
         CBlock block;
         block.nVersion        = nVersion;
         block.hashPrevBlock   = hashPrev;
@@ -1409,9 +1412,11 @@ public:
         block.nTime           = nTime;
         block.nBits           = nBits;
         block.nNonce          = nNonce;
-        return block.GetHash();
-    }
 
+        const_cast<CDiskBlockIndex*>(this)->blockHash = block.GetHash();
+
+        return blockHash;
+    }
 
     std::string ToString() const
     {

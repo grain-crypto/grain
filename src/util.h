@@ -12,7 +12,11 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #else
+#ifndef __MINGW64__
 typedef int pid_t; /* define for Windows compatibility */
+#else
+#include <sys/types.h>
+#endif
 #endif
 #include <map>
 #include <vector>
@@ -35,7 +39,6 @@ typedef unsigned long long  uint64;
 static const int64 COIN = 1000000;
 static const int64 CENT = 10000;
 
-#define loop                for (;;)
 #define BEGIN(a)            ((char*)&(a))
 #define END(a)              ((char*)&((&(a))[1]))
 #define UBEGIN(a)           ((unsigned char*)&(a))
@@ -228,7 +231,7 @@ uint256 GetRandHash();
 int64 GetTime();
 void SetMockTime(int64 nMockTimeIn);
 int64 GetAdjustedTime();
-long hex2long(const char* hexString);
+int64 GetTimeOffset();
 std::string FormatFullVersion();
 std::string FormatSubVersion(const std::string& name, int nClientVersion, const std::vector<std::string>& comments);
 void AddTimeData(const CNetAddr& ip, int64 nTime);
@@ -531,6 +534,20 @@ inline uint160 Hash160(const std::vector<unsigned char>& vch)
     return hash2;
 }
 
+/**
+ * Timing-attack-resistant comparison.
+ * Takes time proportional to length
+ * of first argument.
+ */
+template <typename T>
+bool TimingResistantEqual(const T& a, const T& b)
+{
+    if (b.size() == 0) return a.size() == 0;
+    size_t accumulator = a.size() ^ b.size();
+    for (size_t i = 0; i < a.size(); i++)
+        accumulator |= a[i] ^ b[i%b.size()];
+    return accumulator == 0;
+}
 
 /** Median filter over a stream of values.
  * Returns the median of the last N numbers

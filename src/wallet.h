@@ -35,6 +35,13 @@ enum WalletFeature
     FEATURE_LATEST = 60000
 };
 
+/** Stake weight calculation mode */
+enum StakeWeightMode
+{
+    STAKE_NORMAL = 0, // all 10+ days old inputs
+    STAKE_MAXWEIGHT = 1, // only 30+ days old inputs
+    STAKE_MINWEIGHT = 3 // only [10-30] days old inputs
+};
 
 /** A key pool entry */
 class CKeyPool
@@ -86,6 +93,7 @@ public:
     std::string strWalletFile;
 
     std::set<int64> setKeyPool;
+    std::map<CKeyID, CKeyMetadata> mapKeyMetadata;
 
 
     typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
@@ -119,6 +127,7 @@ public:
     std::map<CTxDestination, std::string> mapAddressBook;
 
     CPubKey vchDefaultKey;
+    int64 nTimeFirstKey;
 
     // check whether we are allowed to upgrade (or already support) to the named feature
     bool CanSupportFeature(enum WalletFeature wf) { return nWalletMaxVersion >= wf; }
@@ -132,6 +141,8 @@ public:
     bool AddKey(const CKey& key);
     // Adds a key to the store, without saving it to disk (used by LoadWallet)
     bool LoadKey(const CKey& key) { return CCryptoKeyStore::AddKey(key); }
+    // Load metadata (used by LoadWallet)
+    bool LoadKeyMetadata(const CPubKey &pubkey, const CKeyMetadata &metadata);
 
     bool LoadMinVersion(int nVersion) { nWalletVersion = nVersion; nWalletMaxVersion = std::max(nWalletMaxVersion, nVersion); return true; }
 
@@ -145,6 +156,9 @@ public:
     bool Unlock(const SecureString& strWalletPassphrase);
     bool ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase, const SecureString& strNewWalletPassphrase);
     bool EncryptWallet(const SecureString& strWalletPassphrase);
+
+    void GetKeyBirthTimes(std::map<CKeyID, int64> &mapKeyBirth) const;
+
 
     /** Increment the next transaction order id
         @return next transaction order id
@@ -177,19 +191,22 @@ public:
     bool CreateTransaction(const std::vector<std::pair<CScript, int64> >& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet);
     bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet);
     bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey);
+
+    uint64 GetStakeWeight(const CKeyStore& keystore, enum StakeWeightMode mode=STAKE_NORMAL);
     bool CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int64 nSearchInterval, CTransaction& txNew);
+
     std::string SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
     std::string SendMoneyToDestination(const CTxDestination &address, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
 
     bool NewKeyPool();
-    bool TopUpKeyPool();
+    bool TopUpKeyPool(unsigned int nSize = 0);
     int64 AddReserveKey(const CKeyPool& keypool);
     void ReserveKeyFromKeyPool(int64& nIndex, CKeyPool& keypool);
     void KeepKey(int64 nIndex);
     void ReturnKey(int64 nIndex);
     bool GetKeyFromPool(CPubKey &key, bool fAllowReuse=true);
     int64 GetOldestKeyPoolTime();
-    void GetAllReserveKeys(std::set<CKeyID>& setAddress);
+    void GetAllReserveKeys(std::set<CKeyID>& setAddress) const;
 
     std::set< std::set<CTxDestination> > GetAddressGroupings();
     std::map<CTxDestination, int64> GetAddressBalances();
@@ -279,7 +296,7 @@ public:
         }
     }
 
-    int GetKeyPoolSize()
+    unsigned int GetKeyPoolSize()
     {
         return setKeyPool.size();
     }

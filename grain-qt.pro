@@ -2,7 +2,7 @@ TEMPLATE = app
 TARGET = grain-qt
 VERSION = 0.7.2
 INCLUDEPATH += src src/json src/qt
-DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE BOOST_THREAD_PROVIDES_GENERIC_SHARED_MUTEX_ON_WIN __NO_SYSTEM_INCLUDES
+DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE BOOST_THREAD_PROVIDES_GENERIC_SHARED_MUTEX_ON_WIN
 CONFIG += no_include_pwd
 
 # UNCOMMENT THIS SECTION TO BUILD ON WINDOWS
@@ -55,8 +55,9 @@ contains(USE_UPNP, -) {
     }
     DEFINES += USE_UPNP=$$USE_UPNP STATICLIB
     INCLUDEPATH += $$MINIUPNPC_INCLUDE_PATH
+    win32:LIBS += -Wl,-Bstatic
     LIBS += $$join(MINIUPNPC_LIB_PATH,,-L,) -lminiupnpc
-    win32:LIBS += -liphlpapi
+    win32:LIBS += -Wl,-Bdynamic -liphlpapi
 }
 
 # use: qmake "USE_DBUS=1"
@@ -83,6 +84,31 @@ contains(BITCOIN_NEED_QT_PLUGINS, 1) {
     QTPLUGIN += qcncodecs qjpcodecs qtwcodecs qkrcodecs qtaccessiblewidgets
 }
 
+contains(USE_LEVELDB, -) {
+    message(Building without LevelDB)
+    SOURCES += src/txdb-bdb.cpp
+} else {
+    message(Building with LevelDB)
+    DEFINES += USE_LEVELDB
+    INCLUDEPATH += src/leveldb/include src/leveldb/helpers
+    LIBS += $$PWD/src/leveldb/libleveldb.a $$PWD/src/leveldb/libmemenv.a
+    SOURCES += src/txdb-leveldb.cpp
+    !windows {
+        genleveldb.commands = cd $$PWD/src/leveldb ; make libleveldb.a libmemenv.a
+    } else {
+        # make an educated guess about what the ranlib command is called
+        isEmpty(QMAKE_RANLIB) {
+            QMAKE_RANLIB = $$replace(QMAKE_STRIP, strip, ranlib)
+        }
+        genleveldb.commands = cd $$PWD/src/leveldb ; CC=$$QMAKE_CC CXX=$$QMAKE_CXX TARGET_OS=OS_WINDOWS_CROSSCOMPILE CXXFLAGS="-I$$BOOST_INCLUDE_PATH" LDFLAGS="-L$$BOOST_LIB_PATH" make libleveldb.a libmemenv.a ; $$QMAKE_RANLIB $$PWD/src/leveldb/libleveldb.a
+    }
+    genleveldb.target = $$PWD/src/leveldb/libleveldb.a
+    genleveldb.depends = FORCE
+    PRE_TARGETDEPS += $$PWD/src/leveldb/libleveldb.a
+    QMAKE_EXTRA_TARGETS += genleveldb
+    # Gross ugly hack that depends on qmake internals, unfortunately there's no other way to do it.
+    QMAKE_CLEAN += $$PWD/src/leveldb/libleveldb.a; cd $$PWD/src/leveldb ; make clean
+}
 
 # regenerate src/build.h
 !windows|contains(USE_BUILD_INFO, 1) {
@@ -96,7 +122,7 @@ contains(BITCOIN_NEED_QT_PLUGINS, 1) {
 
 QMAKE_CXXFLAGS += -msse2
 QMAKE_CFLAGS += -msse2
-QMAKE_CXXFLAGS_WARN_ON = -fdiagnostics-show-option -Wall -Wextra -Wformat -Wformat-security -Wno-unused-parameter -Wstack-protector
+QMAKE_CXXFLAGS_WARN_ON = -fdiagnostics-show-option -Wall -Wextra -Wformat -Wformat-security -Wno-unused-parameter -Wstack-protector -fpermissive
 
 # Input
 DEPENDPATH += src src/json src/qt
@@ -120,14 +146,16 @@ HEADERS += src/qt/bitcoingui.h \
     src/util.h \
     src/uint256.h \
     src/kernel.h \
-    src/scrypt_mine.h \
+    src/scrypt.h \
     src/pbkdf2.h \
     src/serialize.h \
     src/strlcpy.h \
     src/main.h \
+    src/miner.h \
     src/net.h \
     src/key.h \
     src/db.h \
+    src/txdb.h \
     src/walletdb.h \
     src/script.h \
     src/init.h \
@@ -193,6 +221,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/key.cpp \
     src/script.cpp \
     src/main.cpp \
+    src/miner.cpp \
     src/init.cpp \
     src/net.cpp \
     src/irc.cpp \
@@ -237,7 +266,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/kernel.cpp \
     src/scrypt-x86.S \
     src/scrypt-x86_64.S \
-    src/scrypt_mine.cpp \
+    src/scrypt.cpp \
     src/pbkdf2.cpp
 
 RESOURCES += \
@@ -357,11 +386,16 @@ macx:QMAKE_CXXFLAGS_THREAD += -pthread
 # Set libraries and includes at end, to use platform-defined defaults if not overridden
 INCLUDEPATH += $$BOOST_INCLUDE_PATH $$BDB_INCLUDE_PATH $$OPENSSL_INCLUDE_PATH $$QRENCODE_INCLUDE_PATH
 LIBS += $$join(BOOST_LIB_PATH,,-L,) $$join(BDB_LIB_PATH,,-L,) $$join(OPENSSL_LIB_PATH,,-L,) $$join(QRENCODE_LIB_PATH,,-L,)
+windows:LIBS += -Wl,-Bstatic
 LIBS += -lssl -lcrypto -ldb_cxx$$BDB_LIB_SUFFIX
 # -lgdi32 has to happen after -lcrypto (see  #681)
+windows:LIBS += -Wl,-Bdynamic
 windows:LIBS += -lws2_32 -lshlwapi -lmswsock -lole32 -loleaut32 -luuid -lgdi32
+windows:LIBS += -Wl,-Bstatic
 LIBS += -lboost_system$$BOOST_LIB_SUFFIX -lboost_filesystem$$BOOST_LIB_SUFFIX -lboost_program_options$$BOOST_LIB_SUFFIX -lboost_thread$$BOOST_THREAD_LIB_SUFFIX
 windows:LIBS += -lboost_chrono$$BOOST_LIB_SUFFIX
+windows:LIBS += -lpthread -Wl,-Bdynamic
+LIBS += -lz
 
 contains(RELEASE, 1) {
     !windows:!macx {
