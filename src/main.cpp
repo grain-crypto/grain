@@ -2226,7 +2226,7 @@ bool CBlock::AcceptBlock()
         return error("AcceptBlock() : block's timestamp is too early");
 
     // Check that bonus block reward tx is present when necessary and absent otherwise
-    int64 nBonusReward = GetProofOfWorkBlockBonusRewardFactor(pindexPrev);
+    long nBonusReward = GetProofOfWorkBlockBonusRewardFactor(pindexPrev);
     for (unsigned i = 1; i < vtx.size(); i++)
 	if (vtx[i].IsCoinBase())
 	{
@@ -2235,10 +2235,9 @@ bool CBlock::AcceptBlock()
 
 	    CBlock prevBlock;
 	    prevBlock.ReadFromDisk(pindexPrev, true);
-	    if (prevBlock.vtx[0].nTime != vtx[i].nTime ||
-		    prevBlock.vtx[0].vout.size() != vtx[i].vout.size())
+	    if (prevBlock.vtx[0].vout.size() != vtx[i].vout.size())
 		return DoS(100, error("AcceptBlock() : incorrect bonus block reward tx"));
-	    
+
 	    for (unsigned j = 0; j < vtx[i].vout.size(); j++)
 		if (prevBlock.vtx[0].vout[j].nValue * nBonusReward != vtx[i].vout[j].nValue ||
 			prevBlock.vtx[0].vout[j].scriptPubKey != vtx[i].vout[j].scriptPubKey)
