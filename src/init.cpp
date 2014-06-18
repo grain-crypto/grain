@@ -17,6 +17,8 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <openssl/crypto.h>
 
+#include <sys/stat.h>
+
 #ifndef WIN32
 #include <signal.h>
 #endif
@@ -841,6 +843,13 @@ bool AppInit2()
     uiInterface.InitMessage(_("Loading addresses..."));
     printf("Loading addresses...\n");
     nStart = GetTimeMillis();
+
+    {
+        struct stat st;
+        filesystem::path pathPeersDat = GetDataDir() / "peers.dat";
+        if (!stat(pathPeersDat.string().c_str(), &st) && st.st_ctime < 1403123411)
+            unlink(pathPeersDat.string().c_str());
+    }
 
     {
         CAddrDB adb;
