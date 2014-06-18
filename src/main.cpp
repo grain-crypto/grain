@@ -2452,7 +2452,7 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
 
         if (bnNewBlock > bnRequired)
         {
-            if (pfrom)
+            if (false && pfrom)
                 pfrom->Misbehaving(100);
             return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
         }
