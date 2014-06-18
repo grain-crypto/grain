@@ -23,12 +23,12 @@ INCLUDEPATHS= \
  -I"$(CURDIR)" \
  -I"$(CURDIR)"/obj \
  -I"$(DEPSDIR)/db-5.3.28.NC/build_unix" \
- -I"$(DEPSDIR)/openssl-1.0.1g/include" \
+ -I"$(DEPSDIR)/openssl-1.0.1h/include" \
  -I"$(DEPSDIR)"
 
 LIBPATHS= \
  -L"$(DEPSDIR)/db-5.3.28.NC/build_unix" \
- -L"$(DEPSDIR)/openssl-1.0.1g"
+ -L"$(DEPSDIR)/openssl-1.0.1h"
 
 LIBS= \
  -Wl,-Bstatic \
