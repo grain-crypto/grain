@@ -1045,7 +1045,7 @@ unsigned int ComputeMaxBits(CBigNum bnTargetLimit, unsigned int nBase, int64 nTi
     {
         // Maximum 200% adjustment per day...
         bnResult *= 2;
-        nTime -= 24 * 60 * 60;
+        nTime -= 24 * 60 * 60 / 20;
     }
     if (bnResult > bnTargetLimit)
         bnResult = bnTargetLimit;
@@ -2067,7 +2067,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         return false;
 
     // New best
-    if (pindexNew->nChainTrust > nBestChainTrust)
+    if (pindexNew->nChainTrust > nBestChainTrust || Checkpoints::WantedByPendingSyncCheckpoint(hash))
         if (!SetBestChain(txdb, pindexNew))
             return false;
 
@@ -2413,10 +2413,11 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     if (mapOrphanBlocks.count(hash))
         return error("ProcessBlock() : already have block (orphan) %s", hash.ToString().substr(0,20).c_str());
 
+    bool fWantedByPendingSyncCheckpoint = Checkpoints::WantedByPendingSyncCheckpoint(hash);
     // ppcoin: check proof-of-stake
     // Limited duplicity on stake: prevents block flood attack
     // Duplicate stake allowed only when there is orphan child block
-    if (pblock->IsProofOfStake() && setStakeSeen.count(pblock->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+    if (pblock->IsProofOfStake() && setStakeSeen.count(pblock->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !fWantedByPendingSyncCheckpoint)
         return error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for block %s", pblock->GetProofOfStake().first.ToString().c_str(), pblock->GetProofOfStake().second, hash.ToString().c_str());
 
     // Preliminary checks
@@ -2430,14 +2431,16 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake, targetProofOfStake))
         {
             printf("WARNING: ProcessBlock(): check proof-of-stake failed for block %s\n", hash.ToString().c_str());
-            return false; // do not error here as we expect this during initial block download
+            if (mapBlockIndex.count(pblock->hashPrevBlock) || !fWantedByPendingSyncCheckpoint)
+                return false; // do not error here as we expect this during initial block download
+            pblock->fProofOfStakeRecheckRequired = true;
         }
-        if (!mapProofOfStake.count(hash)) // add to mapProofOfStake
+        else if (!mapProofOfStake.count(hash)) // add to mapProofOfStake
             mapProofOfStake.insert(make_pair(hash, hashProofOfStake));
     }
 
     CBlockIndex* pcheckpoint = Checkpoints::GetLastSyncCheckpoint();
-    if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+    if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !fWantedByPendingSyncCheckpoint)
     {
         // Extra checks to prevent "fill up memory by spamming with bogus blocks"
         int64 deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
@@ -2468,11 +2471,11 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
         CBlock* pblock2 = new CBlock(*pblock);
         // ppcoin: check proof-of-stake
-        if (pblock2->IsProofOfStake())
+        if (pblock2->IsProofOfStake() && !pblock2->fProofOfStakeRecheckRequired)
         {
             // Limited duplicity on stake: prevents block flood attack
             // Duplicate stake allowed only when there is orphan child block
-            if (setStakeSeenOrphan.count(pblock2->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+            if (setStakeSeenOrphan.count(pblock2->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !fWantedByPendingSyncCheckpoint)
                 return error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock2->GetProofOfStake().first.ToString().c_str(), pblock2->GetProofOfStake().second, hash.ToString().c_str());
             else
                 setStakeSeenOrphan.insert(pblock2->GetProofOfStake());
@@ -2483,10 +2486,21 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         // Ask this guy to fill in what we're missing
         if (pfrom)
         {
-            pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
+            static CBlockIndex *pindexLastGetWantedByOrphan = NULL;
+            static uint256 hashLastGetWantedByOrphan = uint256(0);
+            uint256 hashOrphanRoot = GetOrphanRoot(pblock2);
+
+            if (pindexLastGetWantedByOrphan != pindexBest || !mapOrphanBlocks.count(hashLastGetWantedByOrphan) ||
+                GetOrphanRoot(mapOrphanBlocks[hashLastGetWantedByOrphan]) != hashOrphanRoot)
+                pfrom->PushGetBlocks(pindexBest, hashOrphanRoot);
+
+            pindexLastGetWantedByOrphan = pindexBest;
+            hashLastGetWantedByOrphan = hashOrphanRoot;
+
             // ppcoin: getblocks may not obtain the ancestor block rejected
-            // earlier by duplicate-stake check so we ask for it again directly
-            if (!IsInitialBlockDownload())
+            // earlier by duplicate-stake check or by flood limiting filter (not the fast way to recover but forceful)
+            // so we ask for it again directly
+            if (!IsInitialBlockDownload() || Checkpoints::WantedByPendingSyncCheckpoint(hash))
                 pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         }
         return true;
@@ -2507,9 +2521,26 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
              ++mi)
         {
             CBlock* pblockOrphan = (*mi).second;
+            uint256 hashOrphan = pblockOrphan->GetHash();
+            if (pblockOrphan->fProofOfStakeRecheckRequired)
+            {
+                uint256 hashProofOfStake = 0, targetProofOfStake = 0;
+                if (!CheckProofOfStake(pblockOrphan->vtx[1], pblockOrphan->nBits, hashProofOfStake, targetProofOfStake))
+                {
+                    printf("ERROR: ProcessBlock(): check proof-of-stake failed for block %s\n", hashOrphan.ToString().c_str());
+                }
+                else
+                {
+                    if (!mapProofOfStake.count(hashOrphan)) // add to mapProofOfStake
+                        mapProofOfStake.insert(make_pair(hashOrphan, hashProofOfStake));
+                    if (pblockOrphan->AcceptBlock())
+                        vWorkQueue.push_back(hashOrphan);
+                }
+            }
+            else
             if (pblockOrphan->AcceptBlock())
-                vWorkQueue.push_back(pblockOrphan->GetHash());
-            mapOrphanBlocks.erase(pblockOrphan->GetHash());
+                vWorkQueue.push_back(hashOrphan);
+            mapOrphanBlocks.erase(hashOrphan);
             setStakeSeenOrphan.erase(pblockOrphan->GetProofOfStake());
             delete pblockOrphan;
         }
@@ -3434,7 +3465,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             }
         }
     }
-    else if (strCommand == "checkpoint")
+    else if (strCommand == "checkpoint" && !GetBoolArg("-nosynccheckpoints", false))
     {
         CSyncCheckpoint checkpoint;
         vRecv >> checkpoint;

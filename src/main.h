@@ -865,6 +865,11 @@ public:
     mutable int nDoS;
     bool DoS(int nDoSIn, bool fIn) const { nDoS += nDoSIn; return fIn; }
 
+    // During switching from fork to the last sync checkpoint the initial proof-of-stake checking could fail
+    // So the block wanted by pending sync checkpoint is accepted to the orphan pool with indication
+    // to verify proof-of-stake when txdb is in consistent state with a block.
+    mutable bool fProofOfStakeRecheckRequired;
+
     CBlock()
     {
         SetNull();
@@ -905,6 +910,7 @@ public:
         vchBlockSig.clear();
         vMerkleTree.clear();
         nDoS = 0;
+        fProofOfStakeRecheckRequired = false;
     }
 
     bool IsNull() const
