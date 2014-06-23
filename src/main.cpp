@@ -2293,6 +2293,14 @@ bool CBlock::AcceptBlock()
     // ppcoin: check pending sync-checkpoint
     Checkpoints::AcceptPendingSyncCheckpoint();
 
+    if (mapArgs.count("-stopatheight"))
+    {
+        int nStopHeight = GetArg("-stopatheight", 0);
+
+        if (nHeight >= nStopHeight)
+            StartShutdown();
+    }
+
     return true;
 }
 
